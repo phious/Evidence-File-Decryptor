@@ -12,11 +12,10 @@ Encryption scheme (from firmware):
   - Padding: PKCS#7-style (custom: pad byte = pad length, full block)
   - Chunk size: 1024 bytes → padded to next 16-byte boundary
   - Output: raw encrypted bytes, no header
-  - Source WAV: 8kHz, 8-bit, mono, PCM
+  - Source WAV: 8kHz nominal, ~9524Hz actual (delayMicroseconds(100) + ADC overhead)
 """
 
 import os
-import io
 import hashlib
 import struct
 from flask import Flask, request, jsonify, send_file, render_template
@@ -25,9 +24,12 @@ from Crypto.Cipher import AES
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 200 * 1024 * 1024  # 200MB max upload
 
-UPLOAD_FOLDER = '/tmp/evidence_uploads'
+# Firmware records at ~9524Hz actual due to delayMicroseconds(100) + ~5µs ADC overhead.
+# WAV header says 8000 but real rate is 1,000,000 / (100 + 5) ≈ 9524.
+# UI allows overriding this per-request; this is the server-side default.
+DEFAULT_SAMPLE_RATE = 9524
+
 OUTPUT_FOLDER = '/tmp/evidence_output'
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
 
@@ -54,51 +56,52 @@ def decrypt_evidence(enc_data: bytes, aes_key: bytes, iv: bytes) -> bytes:
     Decrypt AES-256-CBC encrypted evidence file.
 
     Firmware encrypts in 1024-byte chunks, each padded to 16-byte boundary.
-    The padding scheme: pad_byte = (padded_size - original_size), fills remainder.
-    This matches standard PKCS#7 for the last chunk; intermediate chunks are
-    always padded to the next 16-byte multiple of min(chunk, 1024).
-
-    We decrypt the whole file as one CBC stream (IV chains across chunks)
-    then strip trailing padding from the last block.
+    IV chains across all chunks (single CBC stream).
+    Strip trailing PKCS#7-compatible padding from the last block.
     """
     if len(enc_data) == 0:
         raise ValueError("Encrypted file is empty")
     if len(enc_data) % 16 != 0:
-        raise ValueError(f"Encrypted data length {len(enc_data)} is not a multiple of 16 — file may be corrupt")
+        raise ValueError(
+            f"Encrypted data length {len(enc_data)} is not a multiple of 16 "
+            "— file may be truncated or corrupt"
+        )
 
     cipher = AES.new(aes_key, AES.MODE_CBC, iv)
     decrypted = cipher.decrypt(enc_data)
 
-    # Strip padding from last block
-    # Firmware: pad byte = (padded_size - real_size), same value repeated
+    # Strip padding: firmware pad byte = (padded_size - real_size), repeated
     pad_byte = decrypted[-1]
-    if 1 <= pad_byte <= 16:
-        # Validate padding
-        if all(b == pad_byte for b in decrypted[-pad_byte:]):
-            decrypted = decrypted[:-pad_byte]
+    if 1 <= pad_byte <= 16 and all(b == pad_byte for b in decrypted[-pad_byte:]):
+        decrypted = decrypted[:-pad_byte]
 
     return decrypted
 
 
-def build_wav_header(pcm_data: bytes, sample_rate: int = 8000,
+def build_wav_header(pcm_data: bytes, sample_rate: int,
                      channels: int = 1, bits_per_sample: int = 8) -> bytes:
     """
-    Build a standard WAV header for the decrypted PCM data.
-    Firmware records: 8kHz, 8-bit, mono — these are the defaults.
-    If the decrypted data already has a RIFF header, it's returned as-is.
+    Wrap raw PCM in a WAV container.
+    If the decrypted data already has a RIFF/WAVE header, patch its sample rate
+    field instead of building a new header — this handles cases where the firmware
+    WAV header survived encryption intact.
     """
-    # Check if already a valid WAV (firmware writes WAV before encrypting)
     if pcm_data[:4] == b'RIFF' and pcm_data[8:12] == b'WAVE':
-        return pcm_data  # already a complete WAV file
+        # Patch existing header: sample rate at offset 24, byte rate at offset 28
+        wav = bytearray(pcm_data)
+        byte_rate = sample_rate * channels * bits_per_sample // 8
+        struct.pack_into('<I', wav, 24, sample_rate)
+        struct.pack_into('<I', wav, 28, byte_rate)
+        return bytes(wav)
 
-    # Build WAV header around raw PCM
-    data_size = len(pcm_data)
-    byte_rate = sample_rate * channels * bits_per_sample // 8
+    # Build fresh WAV header around raw PCM
+    data_size  = len(pcm_data)
+    byte_rate  = sample_rate * channels * bits_per_sample // 8
     block_align = channels * bits_per_sample // 8
 
-    header = struct.pack('<4sI4s', b'RIFF', 36 + data_size, b'WAVE')
+    header  = struct.pack('<4sI4s',  b'RIFF', 36 + data_size, b'WAVE')
     header += struct.pack('<4sIHHIIHH', b'fmt ', 16, 1, channels,
-                         sample_rate, byte_rate, block_align, bits_per_sample)
+                          sample_rate, byte_rate, block_align, bits_per_sample)
     header += struct.pack('<4sI', b'data', data_size)
     return header + pcm_data
 
@@ -106,6 +109,8 @@ def build_wav_header(pcm_data: bytes, sample_rate: int = 8000,
 def sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
+
+# ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.route('/')
 def index():
@@ -117,16 +122,18 @@ def decrypt():
     """
     POST /api/decrypt
     Form fields:
-      file      — .enc file upload
-      aes_key   — 64 hex chars (32 bytes)
-      device_id — device ID string (used to derive IV)
+      file        — .enc file upload
+      aes_key     — 64 hex chars (32 bytes)
+      device_id   — device ID string (used to derive IV)
+      sample_rate — integer Hz (optional, default 9524)
     """
     if 'file' not in request.files:
         return jsonify({'error': 'No file uploaded'}), 400
 
-    f = request.files['file']
-    aes_key_hex = request.form.get('aes_key', '').strip()
-    device_id = request.form.get('device_id', '').strip()
+    f           = request.files['file']
+    aes_key_hex = request.form.get('aes_key',     '').strip()
+    device_id   = request.form.get('device_id',   '').strip()
+    sample_rate = int(request.form.get('sample_rate', DEFAULT_SAMPLE_RATE))
 
     if not f.filename:
         return jsonify({'error': 'No file selected'}), 400
@@ -134,20 +141,22 @@ def decrypt():
         return jsonify({'error': 'AES key is required'}), 400
     if not device_id:
         return jsonify({'error': 'Device ID is required'}), 400
+    if not (4000 <= sample_rate <= 48000):
+        return jsonify({'error': 'sample_rate must be between 4000 and 48000'}), 400
 
-    # Validate and parse key
+    # Parse key
     try:
         aes_key = hex_to_bytes(aes_key_hex)
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
 
-    # Derive IV from device ID
+    # Derive IV
     iv = device_id_to_iv(device_id)
 
-    # Read encrypted data
-    enc_data = f.read()
+    # Read + hash encrypted file
+    enc_data   = f.read()
     enc_sha256 = sha256_hex(enc_data)
-    enc_size = len(enc_data)
+    enc_size   = len(enc_data)
 
     # Decrypt
     try:
@@ -155,47 +164,36 @@ def decrypt():
     except Exception as e:
         return jsonify({'error': f'Decryption failed: {str(e)}'}), 400
 
-    # Wrap in WAV if needed
-    wav_data = build_wav_header(decrypted)
+    # Build WAV with corrected sample rate
+    wav_data   = build_wav_header(decrypted, sample_rate=sample_rate)
     wav_sha256 = sha256_hex(wav_data)
+    duration_s = round(len(decrypted) / sample_rate, 1)
 
     # Save output
-    base_name = os.path.splitext(f.filename)[0]
+    base_name    = os.path.splitext(os.path.basename(f.filename))[0]
     out_filename = f"{base_name}_decrypted.wav"
-    out_path = os.path.join(OUTPUT_FOLDER, out_filename)
+    out_path     = os.path.join(OUTPUT_FOLDER, out_filename)
     with open(out_path, 'wb') as out:
         out.write(wav_data)
 
-    # Estimate duration
-    # WAV: data chunk size / (sample_rate * channels * bits/8)
-    duration_s = 0
-    if wav_data[:4] == b'RIFF':
-        try:
-            data_offset = wav_data.find(b'data')
-            if data_offset > 0:
-                data_size = struct.unpack_from('<I', wav_data, data_offset + 4)[0]
-                duration_s = data_size / 8000  # 8kHz, 8-bit, mono = 8000 bytes/s
-        except Exception:
-            pass
-
     return jsonify({
-        'success': True,
-        'filename': out_filename,
+        'success':        True,
+        'filename':       out_filename,
         'enc_size_bytes': enc_size,
         'dec_size_bytes': len(wav_data),
-        'duration_seconds': round(duration_s, 1),
-        'enc_sha256': enc_sha256,
-        'wav_sha256': wav_sha256,
-        'iv_hex': iv.hex(),
-        'key_preview': aes_key_hex[:8] + '...' + aes_key_hex[-8:],
+        'duration_seconds': duration_s,
+        'sample_rate':    sample_rate,
+        'enc_sha256':     enc_sha256,
+        'wav_sha256':     wav_sha256,
+        'iv_hex':         iv.hex(),
+        'key_preview':    aes_key_hex[:8] + '...' + aes_key_hex[-8:],
     })
 
 
 @app.route('/api/download/<filename>')
 def download(filename):
-    """Download decrypted WAV file."""
-    # Sanitize filename — no path traversal
-    filename = os.path.basename(filename)
+    """Download a decrypted WAV file by name."""
+    filename = os.path.basename(filename)   # prevent path traversal
     path = os.path.join(OUTPUT_FOLDER, filename)
     if not os.path.exists(path):
         return jsonify({'error': 'File not found — it may have expired'}), 404
@@ -208,21 +206,23 @@ def download(filename):
 def verify_hash():
     """
     POST /api/verify
-    Verify a file's SHA-256 against the hash recorded in events.txt
-    Form fields: file, expected_hash
+    Compute SHA-256 of uploaded file and optionally compare to expected hash.
+    Form fields: file, expected_hash (optional)
     """
     if 'file' not in request.files:
         return jsonify({'error': 'No file uploaded'}), 400
-    f = request.files['file']
+
+    f        = request.files['file']
     expected = request.form.get('expected_hash', '').strip().lower()
-    data = f.read()
-    actual = sha256_hex(data)
-    match = (actual == expected) if expected else None
+    data     = f.read()
+    actual   = sha256_hex(data)
+    match    = (actual == expected) if expected else None
+
     return jsonify({
-        'actual_sha256': actual,
+        'actual_sha256':   actual,
         'expected_sha256': expected or None,
-        'match': match,
-        'file_size': len(data),
+        'match':           match,
+        'file_size':       len(data),
     })
 
 
