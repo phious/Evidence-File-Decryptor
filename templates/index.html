@@ -1,0 +1,1160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Evidence Decryptor — Unity University</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@300;400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #080c10;
+    --surface:   #0d1318;
+    --panel:     #111820;
+    --border:    #1e2d3d;
+    --accent:    #00e5ff;
+    --accent2:   #ff6b35;
+    --green:     #00ff9d;
+    --red:       #ff3b5c;
+    --yellow:    #ffd166;
+    --text:      #c8d8e8;
+    --muted:     #4a6070;
+    --mono:      'Share Tech Mono', monospace;
+    --sans:      'Barlow', sans-serif;
+    --cond:      'Barlow Condensed', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-weight: 400;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── Scanline overlay ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.08) 2px,
+      rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none;
+    z-index: 1000;
+  }
+
+  /* ── Header ── */
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 0 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 64px;
+    position: sticky; top: 0;
+    background: rgba(8,12,16,0.95);
+    backdrop-filter: blur(12px);
+    z-index: 100;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .logo-mark {
+    width: 36px; height: 36px;
+    border: 2px solid var(--accent);
+    display: grid;
+    place-items: center;
+    position: relative;
+  }
+  .logo-mark::before {
+    content: '';
+    position: absolute;
+    width: 10px; height: 10px;
+    background: var(--accent);
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%       { opacity: 0.4; transform: scale(0.6); }
+  }
+
+  .header-title {
+    font-family: var(--cond);
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .header-sub {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+  }
+
+  .header-badge {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    padding: 4px 10px;
+    letter-spacing: 0.05em;
+  }
+
+  /* ── Layout ── */
+  main {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 48px 24px 80px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+
+  @media (max-width: 780px) {
+    main { grid-template-columns: 1fr; padding: 24px 16px 60px; }
+    header { padding: 0 20px; }
+  }
+
+  .full-width { grid-column: 1 / -1; }
+
+  /* ── Panel ── */
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 28px;
+    position: relative;
+    overflow: hidden;
+  }
+  .panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent) 0%, transparent 100%);
+  }
+
+  .panel-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .panel-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ── Steps bar ── */
+  .steps {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 0;
+    margin-bottom: 8px;
+  }
+
+  .step {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 20px;
+    border: 1px solid var(--border);
+    border-right: none;
+    position: relative;
+    cursor: default;
+    transition: background 0.2s;
+  }
+  .step:last-child { border-right: 1px solid var(--border); }
+  .step.active {
+    background: rgba(0,229,255,0.04);
+    border-color: var(--accent);
+  }
+  .step.done {
+    background: rgba(0,255,157,0.04);
+    border-color: var(--green);
+  }
+
+  .step-num {
+    font-family: var(--mono);
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--border);
+    line-height: 1;
+    transition: color 0.2s;
+  }
+  .step.active .step-num { color: var(--accent); }
+  .step.done  .step-num { color: var(--green); }
+
+  .step-info {}
+  .step-name {
+    font-family: var(--cond);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    transition: color 0.2s;
+  }
+  .step.active .step-name { color: var(--text); }
+  .step.done  .step-name { color: var(--green); }
+  .step-desc {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  /* ── Form elements ── */
+  label {
+    display: block;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+
+  input[type="text"], input[type="password"] {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 12px 16px;
+    outline: none;
+    transition: border-color 0.2s;
+    letter-spacing: 0.04em;
+  }
+  input:focus { border-color: var(--accent); }
+  input::placeholder { color: var(--muted); }
+
+  .field { margin-bottom: 20px; }
+  .field:last-child { margin-bottom: 0; }
+
+  .field-hint {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 6px;
+    line-height: 1.5;
+  }
+
+  /* ── Drop zone ── */
+  .dropzone {
+    border: 2px dashed var(--border);
+    padding: 40px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    position: relative;
+  }
+  .dropzone:hover, .dropzone.dragover {
+    border-color: var(--accent);
+    background: rgba(0,229,255,0.03);
+  }
+  .dropzone input[type="file"] {
+    position: absolute; inset: 0;
+    opacity: 0; cursor: pointer;
+    width: 100%; height: 100%;
+  }
+
+  .drop-icon {
+    font-size: 32px;
+    margin-bottom: 12px;
+    display: block;
+  }
+  .drop-title {
+    font-family: var(--cond);
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+  .drop-sub {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .drop-selected {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent);
+    margin-top: 10px;
+    display: none;
+  }
+
+  /* ── Key input with toggle ── */
+  .key-wrap {
+    position: relative;
+  }
+  .key-wrap input {
+    padding-right: 48px;
+  }
+  .key-toggle {
+    position: absolute;
+    right: 12px; top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 4px;
+    font-family: var(--mono);
+    transition: color 0.2s;
+  }
+  .key-toggle:hover { color: var(--accent); }
+
+  /* ── Button ── */
+  .btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    padding: 16px;
+    background: transparent;
+    border: 2px solid var(--accent);
+    color: var(--accent);
+    font-family: var(--cond);
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+    margin-top: 24px;
+    position: relative;
+    overflow: hidden;
+  }
+  .btn::before {
+    content: '';
+    position: absolute;
+    left: -100%; top: 0;
+    width: 100%; height: 100%;
+    background: var(--accent);
+    transition: left 0.2s;
+    z-index: 0;
+  }
+  .btn:hover::before { left: 0; }
+  .btn:hover { color: var(--bg); }
+  .btn span { position: relative; z-index: 1; }
+  .btn:disabled {
+    border-color: var(--muted);
+    color: var(--muted);
+    cursor: not-allowed;
+  }
+  .btn:disabled::before { display: none; }
+
+  .btn-secondary {
+    border-color: var(--green);
+    color: var(--green);
+    margin-top: 12px;
+    font-size: 13px;
+    padding: 12px;
+  }
+  .btn-secondary::before { background: var(--green); }
+
+  /* ── Progress ── */
+  #progress-section {
+    display: none;
+  }
+
+  .progress-log {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--green);
+    padding: 20px;
+    height: 180px;
+    overflow-y: auto;
+    line-height: 1.8;
+  }
+  .progress-log .log-line { display: flex; gap: 10px; }
+  .progress-log .log-ts   { color: var(--muted); flex-shrink: 0; }
+  .progress-log .log-ok   { color: var(--green); }
+  .progress-log .log-err  { color: var(--red); }
+  .progress-log .log-info { color: var(--accent); }
+
+  .progress-bar-wrap {
+    height: 4px;
+    background: var(--border);
+    margin-top: 16px;
+    overflow: hidden;
+  }
+  .progress-bar {
+    height: 100%;
+    background: var(--accent);
+    width: 0%;
+    transition: width 0.3s;
+    position: relative;
+  }
+  .progress-bar::after {
+    content: '';
+    position: absolute;
+    right: 0; top: 0;
+    width: 60px; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4));
+    animation: shimmer 1s linear infinite;
+  }
+  @keyframes shimmer {
+    0%   { transform: translateX(-60px); }
+    100% { transform: translateX(60px); }
+  }
+
+  /* ── Result panel ── */
+  #result-section { display: none; }
+
+  .result-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+
+  .stat-box {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    padding: 16px;
+  }
+  .stat-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .stat-value {
+    font-family: var(--mono);
+    font-size: 14px;
+    color: var(--accent);
+    word-break: break-all;
+  }
+  .stat-value.green { color: var(--green); }
+  .stat-value.yellow { color: var(--yellow); }
+
+  .hash-display {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    padding: 14px 16px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    word-break: break-all;
+    margin-bottom: 8px;
+    line-height: 1.6;
+  }
+  .hash-display span { color: var(--text); }
+
+  /* ── Audio player ── */
+  .audio-wrap {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    padding: 20px;
+    margin-top: 16px;
+  }
+  .audio-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    color: var(--green);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  audio {
+    width: 100%;
+    filter: invert(1) hue-rotate(180deg);
+    opacity: 0.85;
+  }
+
+  /* ── Verify tab ── */
+  #verify-section {}
+
+  .match-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    margin-top: 16px;
+  }
+  .match-badge.yes { background: rgba(0,255,157,0.1); border: 1px solid var(--green); color: var(--green); }
+  .match-badge.no  { background: rgba(255,59,92,0.1);  border: 1px solid var(--red);   color: var(--red);   }
+
+  /* ── Error toast ── */
+  #error-toast {
+    display: none;
+    position: fixed;
+    bottom: 24px; right: 24px;
+    background: var(--panel);
+    border: 1px solid var(--red);
+    border-left: 4px solid var(--red);
+    padding: 16px 20px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--red);
+    max-width: 380px;
+    z-index: 999;
+    animation: slide-in 0.3s ease;
+  }
+  @keyframes slide-in {
+    from { transform: translateX(120%); }
+    to   { transform: translateX(0); }
+  }
+  #error-toast .err-title {
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+  }
+  #error-toast .err-msg { color: var(--text); font-size: 11px; }
+
+  /* ── Divider ── */
+  .divider {
+    height: 1px;
+    background: var(--border);
+    margin: 24px 0;
+  }
+
+  /* ── Tab nav ── */
+  .tab-nav {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
+    grid-column: 1 / -1;
+  }
+  .tab-btn {
+    padding: 12px 24px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--muted);
+    font-family: var(--cond);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: color 0.2s, border-color 0.2s;
+    margin-bottom: -1px;
+  }
+  .tab-btn.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+  .tab-btn:hover:not(.active) { color: var(--text); }
+
+  .tab-content { display: none; grid-column: 1 / -1; }
+  .tab-content.active { display: contents; }
+
+  /* ── Firmware key table ── */
+  .fw-key {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    padding: 16px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--yellow);
+    line-height: 2;
+    word-break: break-all;
+    position: relative;
+  }
+  .fw-key-label {
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+    display: block;
+  }
+  .copy-btn {
+    position: absolute;
+    top: 12px; right: 12px;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 4px 10px;
+    cursor: pointer;
+    transition: color 0.2s, border-color 0.2s;
+  }
+  .copy-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+  .info-row {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    min-width: 120px;
+    padding-top: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .info-row-val { color: var(--text); line-height: 1.5; }
+  .info-row-val code {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent);
+    background: rgba(0,229,255,0.06);
+    padding: 1px 6px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <div class="logo-mark"></div>
+    <div>
+      <div class="header-title">Evidence Decryptor</div>
+      <div class="header-sub">EMERGENCY ALERTING SYSTEM · v12.0</div>
+    </div>
+  </div>
+  <div class="header-badge">UNITY UNIVERSITY · CS DEPT</div>
+</header>
+
+<main>
+
+  <!-- Tab nav -->
+  <div class="tab-nav full-width">
+    <button class="tab-btn active" onclick="switchTab('decrypt')">Decrypt Evidence</button>
+    <button class="tab-btn" onclick="switchTab('verify')">Verify Integrity</button>
+    <button class="tab-btn" onclick="switchTab('info')">Encryption Info</button>
+  </div>
+
+  <!-- ══ TAB: DECRYPT ══ -->
+  <div class="tab-content active" id="tab-decrypt">
+
+    <!-- Steps -->
+    <div class="steps full-width">
+      <div class="step active" id="step-1">
+        <div class="step-num">01</div>
+        <div class="step-info">
+          <div class="step-name">Upload File</div>
+          <div class="step-desc">.enc from SD card</div>
+        </div>
+      </div>
+      <div class="step" id="step-2">
+        <div class="step-num">02</div>
+        <div class="step-info">
+          <div class="step-name">Enter Keys</div>
+          <div class="step-desc">AES-256 + Device ID</div>
+        </div>
+      </div>
+      <div class="step" id="step-3">
+        <div class="step-num">03</div>
+        <div class="step-info">
+          <div class="step-name">Decrypt</div>
+          <div class="step-desc">AES-256-CBC</div>
+        </div>
+      </div>
+      <div class="step" id="step-4">
+        <div class="step-num">04</div>
+        <div class="step-info">
+          <div class="step-name">Download</div>
+          <div class="step-desc">Verified WAV audio</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Left column: Upload + Keys -->
+    <div>
+      <div class="panel">
+        <div class="panel-label">Evidence File</div>
+
+        <div class="dropzone" id="dropzone">
+          <input type="file" id="enc-file" accept=".enc" onchange="onFileSelected(this)">
+          <span class="drop-icon">🔒</span>
+          <div class="drop-title">Drop .enc file here</div>
+          <div class="drop-sub">or click to browse SD card evidence</div>
+          <div class="drop-selected" id="drop-selected"></div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top: 24px;">
+        <div class="panel-label">Decryption Parameters</div>
+
+        <div class="field">
+          <label>AES-256 Key (64 hex characters)</label>
+          <div class="key-wrap">
+            <input type="password" id="aes-key"
+              placeholder="4A7F3C9E1B5D8A2F6E0C4B7A3D9F1C5E8B2A6D0B4A7E3B9D..."
+              value="4A7F3C9E1B5D8A2F6E0C4B7A3D9F1C5E8B2A6D0B4A7E3B9D1A5C8E2B6F0A4C7B">
+            <button class="key-toggle" onclick="toggleKeyVis()" id="key-toggle">👁</button>
+          </div>
+          <div class="field-hint">64 hex chars = 32 bytes. Set via BLE or hardcoded in firmware (CHR_AESKEY / AES_KEY).</div>
+        </div>
+
+        <div class="field">
+          <label>Device ID (for IV derivation)</label>
+          <input type="text" id="device-id"
+            placeholder="EMERGENCY_DEVICE_001"
+            value="EMERGENCY_DEVICE_001">
+          <div class="field-hint">First 16 chars used as AES IV. Must match firmware DEVICE_ID exactly.</div>
+        </div>
+
+        <button class="btn" id="decrypt-btn" onclick="runDecrypt()">
+          <span>⚡ Decrypt Evidence</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Right column: Progress + Result -->
+    <div>
+      <div class="panel" id="progress-section">
+        <div class="panel-label">Decryption Log</div>
+        <div class="progress-log" id="progress-log"></div>
+        <div class="progress-bar-wrap">
+          <div class="progress-bar" id="progress-bar"></div>
+        </div>
+      </div>
+
+      <div class="panel" id="result-section" style="margin-top: 24px;">
+        <div class="panel-label">Result</div>
+
+        <div class="result-grid">
+          <div class="stat-box">
+            <div class="stat-label">Duration</div>
+            <div class="stat-value green" id="r-duration">—</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Decrypted Size</div>
+            <div class="stat-value" id="r-size">—</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">IV Used</div>
+            <div class="stat-value yellow" id="r-iv" style="font-size:10px">—</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Key Preview</div>
+            <div class="stat-value yellow" id="r-key">—</div>
+          </div>
+        </div>
+
+        <div class="hash-display">
+          <div style="margin-bottom:4px;">
+            <span style="color:var(--muted);font-size:9px;letter-spacing:.15em;text-transform:uppercase;">SHA-256 (encrypted)</span>
+          </div>
+          <span id="r-enc-hash">—</span>
+        </div>
+        <div class="hash-display">
+          <div style="margin-bottom:4px;">
+            <span style="color:var(--muted);font-size:9px;letter-spacing:.15em;text-transform:uppercase;">SHA-256 (decrypted WAV)</span>
+          </div>
+          <span id="r-wav-hash">—</span>
+        </div>
+
+        <div class="audio-wrap">
+          <div class="audio-label">▶ Preview Decrypted Audio</div>
+          <audio id="audio-player" controls></audio>
+        </div>
+
+        <button class="btn btn-secondary" id="download-btn" onclick="downloadWav()">
+          <span>⬇ Download Decrypted WAV</span>
+        </button>
+      </div>
+
+      <!-- Empty state hint -->
+      <div class="panel" id="empty-hint" style="text-align:center; padding: 60px 20px;">
+        <div style="font-size:48px; margin-bottom:16px; opacity:0.3;">🔐</div>
+        <div style="font-family:var(--cond); font-size:14px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted);">
+          Awaiting Evidence File
+        </div>
+        <div style="font-size:12px; color:var(--muted); margin-top:8px; font-family:var(--mono);">
+          Upload an .enc file and enter your key to begin
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /tab-decrypt -->
+
+  <!-- ══ TAB: VERIFY ══ -->
+  <div class="tab-content" id="tab-verify">
+
+    <div class="panel full-width">
+      <div class="panel-label">File Integrity Verification</div>
+      <p style="font-size:13px; color:var(--muted); margin-bottom:24px; line-height:1.6;">
+        Verify any evidence file (.enc or .wav) against its SHA-256 hash recorded in <code style="font-family:var(--mono);color:var(--accent)">events.txt</code> on the device SD card. Tampering with the file will change the hash.
+      </p>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px;">
+        <div>
+          <div class="field">
+            <label>Evidence File (.enc or .wav)</label>
+            <div class="dropzone" style="padding:30px 20px;">
+              <input type="file" id="verify-file" accept=".enc,.wav">
+              <span class="drop-icon" style="font-size:24px;">📁</span>
+              <div class="drop-title" style="font-size:13px;">Drop file to verify</div>
+              <div class="drop-sub">any evidence file</div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="field">
+            <label>Expected SHA-256 (from events.txt)</label>
+            <input type="text" id="expected-hash"
+              placeholder="a3f8b2c1d4e5...  (64 hex chars, optional)">
+            <div class="field-hint">Paste the SHA256 field from the device event log. Leave blank to just compute the hash.</div>
+          </div>
+          <button class="btn" onclick="runVerify()" style="margin-top:12px;">
+            <span>🔎 Verify File</span>
+          </button>
+        </div>
+      </div>
+
+      <div id="verify-result" style="margin-top:24px; display:none;">
+        <div class="divider"></div>
+        <div class="hash-display">
+          <div style="margin-bottom:4px;"><span style="color:var(--muted);font-size:9px;letter-spacing:.15em;text-transform:uppercase;">Computed SHA-256</span></div>
+          <span id="v-actual" style="color:var(--text)">—</span>
+        </div>
+        <div class="hash-display" id="v-expected-wrap">
+          <div style="margin-bottom:4px;"><span style="color:var(--muted);font-size:9px;letter-spacing:.15em;text-transform:uppercase;">Expected SHA-256</span></div>
+          <span id="v-expected" style="color:var(--text)">—</span>
+        </div>
+        <div id="v-match-badge"></div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:12px;">
+          File size: <span id="v-size" style="color:var(--text)">—</span>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /tab-verify -->
+
+  <!-- ══ TAB: INFO ══ -->
+  <div class="tab-content" id="tab-info">
+
+    <div class="panel">
+      <div class="panel-label">Encryption Scheme</div>
+
+      <div class="info-row">
+        <div class="info-row-label">Algorithm</div>
+        <div class="info-row-val">AES-256-CBC (mbedTLS, firmware v12.0)</div>
+      </div>
+      <div class="info-row">
+        <div class="info-row-label">Key Size</div>
+        <div class="info-row-val">256-bit (32 bytes), set via BLE <code>CHR_AESKEY</code> or hardcoded in firmware</div>
+      </div>
+      <div class="info-row">
+        <div class="info-row-label">IV Derivation</div>
+        <div class="info-row-val">First 16 bytes of <code>DEVICE_ID</code> string, zero-padded. Example: <code>EMERGENCY_DEVIC</code> → <code>454d4552...00</code></div>
+      </div>
+      <div class="info-row">
+        <div class="info-row-label">Chunk Size</div>
+        <div class="info-row-val">1024 bytes per chunk, each padded to next 16-byte boundary. IV chains across all chunks (single CBC stream).</div>
+      </div>
+      <div class="info-row">
+        <div class="info-row-label">Padding</div>
+        <div class="info-row-val">PKCS#7 compatible. Pad byte = number of padding bytes. Applied to final chunk only.</div>
+      </div>
+      <div class="info-row">
+        <div class="info-row-label">Audio Format</div>
+        <div class="info-row-val">WAV, 8kHz, 8-bit, mono PCM. 30 seconds = 240,000 bytes + 44-byte header.</div>
+      </div>
+      <div class="info-row">
+        <div class="info-row-label">Hash</div>
+        <div class="info-row-val">SHA-256 of the <em>.enc file</em> (not plaintext) written to <code>events.txt</code>. Use Verify tab to check integrity.</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-label">Firmware Default Key</div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.6;">
+        This is the key hardcoded in the firmware source. If you changed it via BLE, use your custom key instead.
+      </p>
+
+      <span class="fw-key-label">AES_KEY (hex) — 64 characters</span>
+      <div class="fw-key" style="position:relative;">
+        <button class="copy-btn" onclick="copyKey()">COPY</button>
+        4A7F3C9E1B5D8A2F6E0C4B7A3D9F1C5E<br>8B2A6D0B4A7E3B9D1A5C8E2B6F0A4C7B
+      </div>
+
+      <div style="margin-top:20px;">
+        <span class="fw-key-label">AES_KEY (C array, from firmware)</span>
+        <div class="fw-key" style="color:var(--muted);font-size:10px;">
+          <span style="color:var(--accent)">uint8_t</span> AES_KEY[32] = {<br>
+          &nbsp;&nbsp;0x4A,0x7F,0x3C,0x9E,0x1B,0x5D,0x8A,0x2F,<br>
+          &nbsp;&nbsp;0x6E,0x0C,0x4B,0x7A,0x3D,0x9F,0x1C,0x5E,<br>
+          &nbsp;&nbsp;0x8B,0x2A,0x6D,0x0B,0x4A,0x7E,0x3B,0x9D,<br>
+          &nbsp;&nbsp;0x1A,0x5C,0x8E,0x2B,0x6F,0x0A,0x4C,0x7B<br>
+          };
+        </div>
+      </div>
+    </div>
+
+    <div class="panel full-width" style="margin-top:0;">
+      <div class="panel-label">CLI Usage</div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:16px;">
+        Use <code style="font-family:var(--mono);color:var(--accent)">decrypt_evidence.py</code> for offline/automated decryption:
+      </p>
+      <div class="fw-key" style="color:var(--text);line-height:2.2;">
+        <span style="color:var(--muted)"># Install dependency</span><br>
+        <span style="color:var(--green)">pip install pycryptodome</span><br><br>
+        <span style="color:var(--muted)"># Decrypt with default key</span><br>
+        <span style="color:var(--green)">python decrypt_evidence.py alert_2026-05-10_140259.enc</span><br><br>
+        <span style="color:var(--muted)"># Decrypt with custom key</span><br>
+        <span style="color:var(--green)">python decrypt_evidence.py alert_2026-05-10_140259.enc \</span><br>
+        <span style="color:var(--green)">&nbsp;&nbsp;--key YOUR64HEXKEY --device EMERGENCY_DEVICE_001</span>
+      </div>
+    </div>
+
+  </div><!-- /tab-info -->
+
+</main>
+
+<!-- Error toast -->
+<div id="error-toast">
+  <div class="err-title">⚠ Decryption Error</div>
+  <div class="err-msg" id="error-msg"></div>
+</div>
+
+<script>
+  let currentFilename = null;
+  let currentDownloadName = null;
+
+  // ── Tab switching ───────────────────────────────────────
+  function switchTab(name) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    event.target.classList.add('active');
+    document.getElementById('tab-' + name).classList.add('active');
+  }
+
+  // ── File selected ───────────────────────────────────────
+  function onFileSelected(input) {
+    const el = document.getElementById('drop-selected');
+    if (input.files.length > 0) {
+      const f = input.files[0];
+      el.style.display = 'block';
+      el.textContent = `📎 ${f.name}  (${formatBytes(f.size)})`;
+      setStep(2);
+    }
+  }
+
+  // Drag-and-drop visual
+  const dz = document.getElementById('dropzone');
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+  dz.addEventListener('drop', e => {
+    e.preventDefault(); dz.classList.remove('dragover');
+    const input = document.getElementById('enc-file');
+    input.files = e.dataTransfer.files;
+    onFileSelected(input);
+  });
+
+  // ── Key visibility toggle ───────────────────────────────
+  function toggleKeyVis() {
+    const inp = document.getElementById('aes-key');
+    inp.type = inp.type === 'password' ? 'text' : 'password';
+  }
+
+  // ── Step indicator ──────────────────────────────────────
+  function setStep(n) {
+    for (let i = 1; i <= 4; i++) {
+      const el = document.getElementById('step-' + i);
+      el.classList.remove('active', 'done');
+      if (i < n) el.classList.add('done');
+      else if (i === n) el.classList.add('active');
+    }
+  }
+
+  // ── Log helper ──────────────────────────────────────────
+  function log(msg, type='info') {
+    const container = document.getElementById('progress-log');
+    const ts = new Date().toTimeString().slice(0,8);
+    const div = document.createElement('div');
+    div.className = 'log-line';
+    div.innerHTML = `<span class="log-ts">[${ts}]</span><span class="log-${type}">${msg}</span>`;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  function setProgress(pct) {
+    document.getElementById('progress-bar').style.width = pct + '%';
+  }
+
+  function showError(msg) {
+    document.getElementById('error-msg').textContent = msg;
+    const toast = document.getElementById('error-toast');
+    toast.style.display = 'block';
+    setTimeout(() => toast.style.display = 'none', 6000);
+  }
+
+  // ── Main decrypt ────────────────────────────────────────
+  async function runDecrypt() {
+    const fileInput = document.getElementById('enc-file');
+    const aesKey    = document.getElementById('aes-key').value.trim();
+    const deviceId  = document.getElementById('device-id').value.trim();
+    const btn       = document.getElementById('decrypt-btn');
+
+    if (!fileInput.files.length) { showError('Please select an .enc file first.'); return; }
+    if (!aesKey)   { showError('AES key is required.'); return; }
+    if (!deviceId) { showError('Device ID is required.'); return; }
+
+    // Show progress
+    document.getElementById('progress-section').style.display = 'block';
+    document.getElementById('result-section').style.display = 'none';
+    document.getElementById('empty-hint').style.display = 'none';
+    document.getElementById('progress-log').innerHTML = '';
+    setProgress(0);
+    btn.disabled = true;
+    setStep(3);
+
+    log('Starting decryption sequence...', 'info');
+    log(`File: ${fileInput.files[0].name} (${formatBytes(fileInput.files[0].size)})`, 'info');
+    log(`Device ID: ${deviceId}`, 'info');
+    log(`Key: ${aesKey.slice(0,8)}...${aesKey.slice(-8)}`, 'info');
+    setProgress(15);
+
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    formData.append('aes_key', aesKey);
+    formData.append('device_id', deviceId);
+
+    log('Uploading encrypted file to server...', 'info');
+    setProgress(30);
+
+    try {
+      const resp = await fetch('/api/decrypt', { method: 'POST', body: formData });
+      setProgress(70);
+      log('Running AES-256-CBC decryption...', 'info');
+      const data = await resp.json();
+      setProgress(90);
+
+      if (!resp.ok || data.error) {
+        log('Decryption FAILED: ' + (data.error || 'Unknown error'), 'err');
+        showError(data.error || 'Decryption failed');
+        btn.disabled = false;
+        setStep(2);
+        return;
+      }
+
+      setProgress(100);
+      log('Decryption complete ✓', 'ok');
+      log(`Duration: ${data.duration_seconds}s`, 'ok');
+      log(`Output: ${data.filename}`, 'ok');
+      log(`SHA-256 (enc): ${data.enc_sha256.slice(0,24)}...`, 'info');
+      log(`SHA-256 (wav): ${data.wav_sha256.slice(0,24)}...`, 'info');
+
+      // Populate result
+      document.getElementById('r-duration').textContent = data.duration_seconds + ' seconds';
+      document.getElementById('r-size').textContent = formatBytes(data.dec_size_bytes);
+      document.getElementById('r-iv').textContent = data.iv_hex;
+      document.getElementById('r-key').textContent = data.key_preview;
+      document.getElementById('r-enc-hash').textContent = data.enc_sha256;
+      document.getElementById('r-wav-hash').textContent = data.wav_sha256;
+
+      currentFilename = data.filename;
+
+      // Audio preview via download URL
+      const audioUrl = '/api/download/' + encodeURIComponent(data.filename);
+      const player = document.getElementById('audio-player');
+      player.src = audioUrl;
+
+      document.getElementById('result-section').style.display = 'block';
+      setStep(4);
+
+    } catch (err) {
+      log('Network error: ' + err.message, 'err');
+      showError('Network error — is the server running?');
+      setStep(2);
+    }
+
+    btn.disabled = false;
+  }
+
+  // ── Download ────────────────────────────────────────────
+  function downloadWav() {
+    if (!currentFilename) return;
+    window.location.href = '/api/download/' + encodeURIComponent(currentFilename);
+  }
+
+  // ── Verify ──────────────────────────────────────────────
+  async function runVerify() {
+    const fileInput = document.getElementById('verify-file');
+    const expected  = document.getElementById('expected-hash').value.trim();
+    if (!fileInput.files.length) { showError('Please select a file to verify.'); return; }
+
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    formData.append('expected_hash', expected);
+
+    try {
+      const resp = await fetch('/api/verify', { method: 'POST', body: formData });
+      const data = await resp.json();
+
+      document.getElementById('v-actual').textContent   = data.actual_sha256;
+      document.getElementById('v-expected').textContent = data.expected_sha256 || '(not provided)';
+      document.getElementById('v-size').textContent     = formatBytes(data.file_size);
+
+      const badge = document.getElementById('v-match-badge');
+      if (data.match === true) {
+        badge.innerHTML = '<div class="match-badge yes">✓ HASH MATCH — File is unmodified</div>';
+      } else if (data.match === false) {
+        badge.innerHTML = '<div class="match-badge no">✗ HASH MISMATCH — File may be tampered</div>';
+      } else {
+        badge.innerHTML = '';
+      }
+
+      document.getElementById('verify-result').style.display = 'block';
+    } catch(err) {
+      showError('Verify request failed: ' + err.message);
+    }
+  }
+
+  // ── Copy key ────────────────────────────────────────────
+  function copyKey() {
+    const key = '4A7F3C9E1B5D8A2F6E0C4B7A3D9F1C5E8B2A6D0B4A7E3B9D1A5C8E2B6F0A4C7B';
+    navigator.clipboard.writeText(key).then(() => {
+      const btn = document.querySelector('.copy-btn');
+      btn.textContent = 'COPIED';
+      setTimeout(() => btn.textContent = 'COPY', 2000);
+    });
+  }
+
+  // ── Utils ───────────────────────────────────────────────
+  function formatBytes(b) {
+    if (b < 1024) return b + ' B';
+    if (b < 1024*1024) return (b/1024).toFixed(1) + ' KB';
+    return (b/1024/1024).toFixed(2) + ' MB';
+  }
+</script>
+</body>
+</html>
