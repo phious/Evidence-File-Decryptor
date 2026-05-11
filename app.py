@@ -27,7 +27,7 @@ app.config['MAX_CONTENT_LENGTH'] = 200 * 1024 * 1024  # 200MB max upload
 # Firmware records at ~9524Hz actual due to delayMicroseconds(100) + ~5µs ADC overhead.
 # WAV header says 8000 but real rate is 1,000,000 / (100 + 5) ≈ 9524.
 # UI allows overriding this per-request; this is the server-side default.
-DEFAULT_SAMPLE_RATE = 9524
+DEFAULT_SAMPLE_RATE = 5500
 
 OUTPUT_FOLDER = '/tmp/evidence_output'
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
