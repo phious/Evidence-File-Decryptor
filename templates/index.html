@@ -487,9 +487,9 @@
           <div class="rate-row">
             <input type="number" id="sample-rate" value="8000" min="4000" max="48000" step="1">
             <div class="rate-hint">
-             Firmware default is 8000 Hz but actual rate is ~9524 Hz due to delayMicroseconds(100).
+             8000 Hz matches the firmware WAV header exactly.
               <code style="color:var(--accent);font-family:var(--mono)">delayMicroseconds(120)</code>
-              + ADC overhead. Increase if audio sounds too fast or high-pitched.
+             WAV, 8-bit mono. Nominal 8kHz, actual ~9524 Hz. 30s = ~286k bytes at true rate.
             </div>
           </div>
         </div>
