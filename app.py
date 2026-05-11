@@ -80,23 +80,24 @@ def decrypt_evidence(enc_data: bytes, aes_key: bytes, iv: bytes) -> bytes:
 
 def build_wav_header(pcm_data: bytes, sample_rate: int,
                      channels: int = 1, bits_per_sample: int = 8) -> bytes:
-    """
-    Wrap raw PCM in a WAV container.
-    If the decrypted data already has a RIFF/WAVE header, patch its sample rate
-    field instead of building a new header — this handles cases where the firmware
-    WAV header survived encryption intact.
-    """
+    
+    # If existing RIFF/WAVE header, strip it and rebuild fresh
+    # (firmware's header has data_size=0 bug after encryption)
     if pcm_data[:4] == b'RIFF' and pcm_data[8:12] == b'WAVE':
-        # Patch existing header: sample rate at offset 24, byte rate at offset 28
-        wav = bytearray(pcm_data)
-        byte_rate = sample_rate * channels * bits_per_sample // 8
-        struct.pack_into('<I', wav, 24, sample_rate)
-        struct.pack_into('<I', wav, 28, byte_rate)
-        return bytes(wav)
+        # Find the 'data' chunk and extract raw PCM
+        i = 12
+        while i < len(pcm_data) - 8:
+            chunk_id = pcm_data[i:i+4]
+            chunk_size = struct.unpack_from('<I', pcm_data, i+4)[0]
+            if chunk_id == b'data':
+                # Use actual remaining bytes, not the header's chunk_size (it's 0)
+                pcm_data = pcm_data[i+8:]
+                break
+            i += 8 + chunk_size
 
-    # Build fresh WAV header around raw PCM
-    data_size  = len(pcm_data)
-    byte_rate  = sample_rate * channels * bits_per_sample // 8
+    # Build fresh correct header
+    data_size   = len(pcm_data)
+    byte_rate   = sample_rate * channels * bits_per_sample // 8
     block_align = channels * bits_per_sample // 8
 
     header  = struct.pack('<4sI4s',  b'RIFF', 36 + data_size, b'WAVE')
