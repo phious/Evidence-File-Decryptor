@@ -152,7 +152,7 @@ def main():
 
     print(f"  Decrypted size : {len(pcm):,} bytes")
 
-      wav = build_wav(pcm, sr=8000)
+    wav = build_wav(pcm, sr=8000)
     with open(out_path, 'wb') as f:
         f.write(wav)
 
