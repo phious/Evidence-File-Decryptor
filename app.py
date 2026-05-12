@@ -80,22 +80,25 @@ def decrypt_evidence(enc_data: bytes, aes_key: bytes, iv: bytes) -> bytes:
 
 def build_wav_header(pcm_data: bytes, sample_rate: int,
                      channels: int = 1, bits_per_sample: int = 8) -> bytes:
-    
-    # If existing RIFF/WAVE header, strip it and rebuild fresh
-    # (firmware's header has data_size=0 bug after encryption)
+
     if pcm_data[:4] == b'RIFF' and pcm_data[8:12] == b'WAVE':
+        # Read bits_per_sample from the existing fmt chunk (offset 34)
+        # instead of trusting the caller's default of 8
+        if len(pcm_data) >= 36:
+            bits_per_sample = struct.unpack_from('<H', pcm_data, 34)[0]
+            channels        = struct.unpack_from('<H', pcm_data, 22)[0]
+
         # Find the 'data' chunk and extract raw PCM
         i = 12
         while i < len(pcm_data) - 8:
-            chunk_id = pcm_data[i:i+4]
+            chunk_id   = pcm_data[i:i+4]
             chunk_size = struct.unpack_from('<I', pcm_data, i+4)[0]
             if chunk_id == b'data':
-                # Use actual remaining bytes, not the header's chunk_size (it's 0)
                 pcm_data = pcm_data[i+8:]
                 break
             i += 8 + chunk_size
 
-    # Build fresh correct header
+    # Build fresh correct header with detected (or passed) bits_per_sample
     data_size   = len(pcm_data)
     byte_rate   = sample_rate * channels * bits_per_sample // 8
     block_align = channels * bits_per_sample // 8
@@ -165,31 +168,27 @@ def decrypt():
     except Exception as e:
         return jsonify({'error': f'Decryption failed: {str(e)}'}), 400
 
-    # Build WAV with corrected sample rate
-    wav_data   = build_wav_header(decrypted, sample_rate=sample_rate)
-    wav_sha256 = sha256_hex(wav_data)
-    duration_s = round(len(decrypted) / sample_rate, 1)
+# Build WAV with corrected sample rate
+    wav_data      = build_wav_header(decrypted, sample_rate=sample_rate)
+    wav_sha256    = sha256_hex(wav_data)
 
-    # Save output
-    base_name    = os.path.splitext(os.path.basename(f.filename))[0]
-    out_filename = f"{base_name}_decrypted.wav"
-    out_path     = os.path.join(OUTPUT_FOLDER, out_filename)
-    with open(out_path, 'wb') as out:
-        out.write(wav_data)
+    # Read bits_per_sample from the WAV header we just built (offset 34)
+    bits_per_sample = struct.unpack_from('<H', wav_data, 34)[0]
+    duration_s      = round(len(decrypted) / (sample_rate * (bits_per_sample // 8)), 1)
 
     return jsonify({
-        'success':        True,
-        'filename':       out_filename,
-        'enc_size_bytes': enc_size,
-        'dec_size_bytes': len(wav_data),
+        'success':          True,
+        'filename':         out_filename,
+        'enc_size_bytes':   enc_size,
+        'dec_size_bytes':   len(wav_data),
         'duration_seconds': duration_s,
-        'sample_rate':    sample_rate,
-        'enc_sha256':     enc_sha256,
-        'wav_sha256':     wav_sha256,
-        'iv_hex':         iv.hex(),
-        'key_preview':    aes_key_hex[:8] + '...' + aes_key_hex[-8:],
+        'sample_rate':      sample_rate,
+        'bits_per_sample':  bits_per_sample,   # ← new field
+        'enc_sha256':       enc_sha256,
+        'wav_sha256':       wav_sha256,
+        'iv_hex':           iv.hex(),
+        'key_preview':      aes_key_hex[:8] + '...' + aes_key_hex[-8:],
     })
-
 
 @app.route('/api/download/<filename>')
 def download(filename):
