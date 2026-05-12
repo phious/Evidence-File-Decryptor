@@ -824,8 +824,7 @@
 
       document.getElementById('r-duration').textContent = data.duration_seconds + ' seconds';
       document.getElementById('r-size').textContent     = formatBytes(data.dec_size_bytes);
-      document.getElementById('r-sr').textContent       = data.sample_rate + ' Hz';  // ✅ show it
-      document.getElementById('r-key').textContent      = data.key_preview;
+      document.getElementById('r-sr').textContent       = data.sample_rate + ' Hz'; 
       document.getElementById('r-enc-hash').textContent = data.enc_sha256;
       document.getElementById('r-wav-hash').textContent = data.wav_sha256;
       document.getElementById('r-bits').textContent = data.bits_per_sample + '-bit'; 
