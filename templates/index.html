@@ -771,12 +771,11 @@
     const deviceId   = document.getElementById('device-id').value.trim();
     const sampleRate = document.getElementById('sample-rate').value.trim(); // ✅ read it
     const btn        = document.getElementById('decrypt-btn');
-    document.getElementById('r-bits').textContent = data.bits_per_sample + '-bit'; 
+  
 
     if (!fileInput.files.length) { showError('Please select an .enc file first.'); return; }
     if (!aesKey)                 { showError('AES key is required.'); return; }
     if (!deviceId)               { showError('Device ID is required.'); return; }
-
     document.getElementById('progress-section').style.display = 'block';
     document.getElementById('result-section').style.display = 'none';
     document.getElementById('empty-hint').style.display = 'none';
@@ -829,7 +828,7 @@
       document.getElementById('r-key').textContent      = data.key_preview;
       document.getElementById('r-enc-hash').textContent = data.enc_sha256;
       document.getElementById('r-wav-hash').textContent = data.wav_sha256;
-
+      document.getElementById('r-bits').textContent = data.bits_per_sample + '-bit'; 
       currentFilename = data.filename;
       const player = document.getElementById('audio-player');
       player.src = '/api/download/' + encodeURIComponent(data.filename);
