@@ -168,13 +168,17 @@ def decrypt():
     except Exception as e:
         return jsonify({'error': f'Decryption failed: {str(e)}'}), 400
 
-# Build WAV with corrected sample rate
-    wav_data      = build_wav_header(decrypted, sample_rate=sample_rate)
-    wav_sha256    = sha256_hex(wav_data)
-
-    # Read bits_per_sample from the WAV header we just built (offset 34)
+    wav_data        = build_wav_header(decrypted, sample_rate=sample_rate)
+    wav_sha256      = sha256_hex(wav_data)
     bits_per_sample = struct.unpack_from('<H', wav_data, 34)[0]
     duration_s      = round(len(decrypted) / (sample_rate * (bits_per_sample // 8)), 1)
+
+    # ← THESE TWO LINES WERE MISSING:
+    base_name    = os.path.splitext(os.path.basename(f.filename))[0]
+    out_filename = f"{base_name}_decrypted.wav"
+    out_path     = os.path.join(OUTPUT_FOLDER, out_filename)
+    with open(out_path, 'wb') as out:
+        out.write(wav_data)
 
     return jsonify({
         'success':          True,
@@ -183,7 +187,7 @@ def decrypt():
         'dec_size_bytes':   len(wav_data),
         'duration_seconds': duration_s,
         'sample_rate':      sample_rate,
-        'bits_per_sample':  bits_per_sample,   # ← new field
+        'bits_per_sample':  bits_per_sample,
         'enc_sha256':       enc_sha256,
         'wav_sha256':       wav_sha256,
         'iv_hex':           iv.hex(),
