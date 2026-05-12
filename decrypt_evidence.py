@@ -67,17 +67,28 @@ def decrypt_evidence(enc_data: bytes, key: bytes, iv: bytes) -> bytes:
 
 
 def build_wav(pcm: bytes, sr=8000, ch=1, bits=8) -> bytes:
-    """Wrap raw PCM in WAV container, or pass through if already WAV."""
     if pcm[:4] == b'RIFF' and pcm[8:12] == b'WAVE':
-        return pcm
-    n = len(pcm)
+        # Read actual bit depth and channels from existing header
+        if len(pcm) >= 36:
+            bits = struct.unpack_from('<H', pcm, 34)[0]
+            ch   = struct.unpack_from('<H', pcm, 22)[0]
+        # Extract raw PCM from data chunk
+        i = 12
+        while i < len(pcm) - 8:
+            chunk_id   = pcm[i:i+4]
+            chunk_size = struct.unpack_from('<I', pcm, i+4)[0]
+            if chunk_id == b'data':
+                pcm = pcm[i+8:]
+                break
+            i += 8 + chunk_size
+
+    n  = len(pcm)
     br = sr * ch * bits // 8
     ba = ch * bits // 8
     hdr  = struct.pack('<4sI4s', b'RIFF', 36 + n, b'WAVE')
     hdr += struct.pack('<4sIHHIIHH', b'fmt ', 16, 1, ch, sr, br, ba, bits)
     hdr += struct.pack('<4sI', b'data', n)
     return hdr + pcm
-
 
 def sha256_file(path: str) -> str:
     h = hashlib.sha256()
@@ -141,16 +152,18 @@ def main():
 
     print(f"  Decrypted size : {len(pcm):,} bytes")
 
-    wav = build_wav(pcm)
+      wav = build_wav(pcm, sr=8000)
     with open(out_path, 'wb') as f:
         f.write(wav)
 
     wav_sha = sha256_file(out_path)
 
     # Estimate duration
-    duration = len(pcm) / 8000
+    actual_bits = struct.unpack_from('<H', wav, 34)[0]
+    duration = len(pcm) / (8000 * (actual_bits // 8))
     print(f"\n  WAV written    : {out_path}")
     print(f"  Duration       : {duration:.1f} seconds")
+    print(f"  Bit depth      : {actual_bits}-bit")
     print(f"  SHA-256 (wav)  : {wav_sha}")
     print(f"\n  Done. Open {out_path} in any audio player.")
     print(f"{'='*55}\n")
