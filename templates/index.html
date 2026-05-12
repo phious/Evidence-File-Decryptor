@@ -771,6 +771,7 @@
     const deviceId   = document.getElementById('device-id').value.trim();
     const sampleRate = document.getElementById('sample-rate').value.trim(); // ✅ read it
     const btn        = document.getElementById('decrypt-btn');
+    document.getElementById('r-bits').textContent = data.bits_per_sample + '-bit'; 
 
     if (!fileInput.files.length) { showError('Please select an .enc file first.'); return; }
     if (!aesKey)                 { showError('AES key is required.'); return; }
