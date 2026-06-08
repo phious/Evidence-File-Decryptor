@@ -134,12 +134,14 @@ def main():
         print(f"[ERROR] {e}")
         sys.exit(1)
 
-    iv = device_id_to_iv(args.device)
-    print(f"  IV     : {iv.hex()}")
-
     print(f"\n  Reading encrypted file...")
     with open(enc_path, 'rb') as f:
-        enc_data = f.read()
+        raw = f.read()
+
+    # First 16 bytes are the random IV prepended by firmware encryptFile()
+    iv       = raw[:16]
+    enc_data = raw[16:]
+    print(f"  IV     : {iv.hex()} (read from file header)")
     enc_sha = hashlib.sha256(enc_data).hexdigest()
     print(f"  Encrypted size : {len(enc_data):,} bytes")
     print(f"  SHA-256 (enc)  : {enc_sha}")
