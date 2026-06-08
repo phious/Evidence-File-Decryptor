@@ -79,7 +79,8 @@ def decrypt_evidence(enc_data: bytes, aes_key: bytes, iv: bytes) -> bytes:
 
 
 def build_wav_header(pcm_data: bytes, sample_rate: int,
-                     channels: int = 1, bits_per_sample: int = 8) -> bytes:
+                     channels: int = 1, bits_per_sample: int = 16) -> bytes:
+    # Firmware always records 16-bit signed PCM. Default corrected from 8 to 16.
 
     if pcm_data[:4] == b'RIFF' and pcm_data[8:12] == b'WAVE':
         # Read bits_per_sample from the existing fmt chunk (offset 34)
