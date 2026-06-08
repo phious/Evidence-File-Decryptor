@@ -41,14 +41,6 @@ def hex_to_bytes(hex_str: str) -> bytes:
     return bytes.fromhex(hex_str)
 
 
-def device_id_to_iv(device_id: str) -> bytes:
-    """
-    Reproduce firmware IV derivation:
-      for (int i = 0; i < 16 && DEVICE_ID[i]; i++) iv[i] = (uint8_t)DEVICE_ID[i];
-    First 16 bytes of DEVICE_ID string, zero-padded to 16 bytes.
-    """
-    id_bytes = device_id.encode('ascii', errors='replace')[:16]
-    return id_bytes.ljust(16, b'\x00')
 
 
 def decrypt_evidence(enc_data: bytes, aes_key: bytes, iv: bytes) -> bytes:
@@ -129,7 +121,6 @@ def decrypt():
     Form fields:
       file        — .enc file upload
       aes_key     — 64 hex chars (32 bytes)
-      device_id   — device ID string (used to derive IV)
       sample_rate — integer Hz (optional, default 9524)
     """
     if 'file' not in request.files:
@@ -137,15 +128,12 @@ def decrypt():
 
     f           = request.files['file']
     aes_key_hex = request.form.get('aes_key',     '').strip()
-    device_id   = request.form.get('device_id',   '').strip()
     sample_rate = int(request.form.get('sample_rate', DEFAULT_SAMPLE_RATE))
 
     if not f.filename:
         return jsonify({'error': 'No file selected'}), 400
     if not aes_key_hex:
         return jsonify({'error': 'AES key is required'}), 400
-    if not device_id:
-        return jsonify({'error': 'Device ID is required'}), 400
     if not (4000 <= sample_rate <= 48000):
         return jsonify({'error': 'sample_rate must be between 4000 and 48000'}), 400
 
@@ -155,13 +143,16 @@ def decrypt():
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
 
-    # Derive IV
-    iv = device_id_to_iv(device_id)
+    # Read encrypted file — first 16 bytes are the random IV
+    raw        = f.read()
+    enc_sha256 = sha256_hex(raw)   # hash the full file including IV
+    enc_size   = len(raw)
 
-    # Read + hash encrypted file
-    enc_data   = f.read()
-    enc_sha256 = sha256_hex(enc_data)
-    enc_size   = len(enc_data)
+    if len(raw) < 32:
+        return jsonify({'error': 'File too small to be valid encrypted evidence'}), 400
+
+    iv       = raw[:16]    # IV prepended by firmware
+    enc_data = raw[16:]    # actual ciphertext starts at byte 16
 
     # Decrypt
     try:
