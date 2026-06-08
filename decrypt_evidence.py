@@ -66,7 +66,8 @@ def decrypt_evidence(enc_data: bytes, key: bytes, iv: bytes) -> bytes:
     return dec
 
 
-def build_wav(pcm: bytes, sr=8000, ch=1, bits=8) -> bytes:
+def build_wav(pcm: bytes, sr=8000, ch=1, bits=16) -> bytes:
+    # Firmware always records 16-bit PCM. Default changed from 8 to 16.
     if pcm[:4] == b'RIFF' and pcm[8:12] == b'WAVE':
         # Read actual bit depth and channels from existing header
         if len(pcm) >= 36:
@@ -160,7 +161,8 @@ def main():
 
     # Estimate duration
     actual_bits = struct.unpack_from('<H', wav, 34)[0]
-    duration = len(pcm) / (8000 * (actual_bits // 8))
+    actual_channels = struct.unpack_from('<H', wav, 22)[0]
+    duration = len(pcm) / (8000 * (actual_bits // 8) * actual_channels)
     print(f"\n  WAV written    : {out_path}")
     print(f"  Duration       : {duration:.1f} seconds")
     print(f"  Bit depth      : {actual_bits}-bit")
